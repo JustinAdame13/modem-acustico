@@ -4,7 +4,7 @@
 //  Hay dos canales:
 //    aire    : la señal sale por la bocina y entra por el micrófono.
 //    interno : la señal va directo del emisor al receptor dentro de la
-//              página, con atenuación y ruido ajustables (simulación).
+//              página, con atenuación, ruido y golpes de ruido (simulación).
 //
 //  Camino de recepción:  entrada -> filtro pasa-altas -> analizador -> captura
 // ============================================================
@@ -15,9 +15,9 @@ const audio = {
   microfonoActivo: false,
   canal: 'aire',
   eco: false,            // un solo dispositivo: se escucha a sí mismo
+  duplex: false,         // full dúplex: transmite y escucha al mismo tiempo
   transmitiendo: false,
-  sordo: false,          // half duplex: mientras transmite, no escucha
-  inicioTx: 0,
+  sordo: false,          // half dúplex: mientras transmite, no escucha
   alRecibirMuestras: null,
   alVolverAEscuchar: null,
   ajustes: { atenuacionDb: 20, ruido: 0, monitor: true },
@@ -83,6 +83,11 @@ async function iniciarAudio() {
   audio.gananciaRuido = ctx.createGain();
   fuenteRuido.connect(audio.gananciaRuido);
   audio.gananciaRuido.connect(audio.entrada);
+  // Golpe de ruido (ruido de impulso): el mismo ruido, muy fuerte y muy breve
+  audio.gananciaGolpe = ctx.createGain();
+  audio.gananciaGolpe.gain.value = 0;
+  fuenteRuido.connect(audio.gananciaGolpe);
+  audio.gananciaGolpe.connect(audio.entrada);
   fuenteRuido.start();
 
   audio.gananciaMic = ctx.createGain();
@@ -100,6 +105,16 @@ function aplicarCanal() {
   audio.aInterno.gain.value = interno ? Math.pow(10, -a.atenuacionDb / 20) : 0;
   audio.gananciaRuido.gain.value = interno ? (a.ruido / 100) * 0.5 : 0;
   audio.gananciaMic.gain.value = interno ? 0 : 1;
+}
+
+// Ruido de impulso en el canal interno: 150 ms de ruido fuerte.
+function golpeDeRuido() {
+  if (!audio.ctx || audio.canal !== 'interno') return;
+  const g = audio.gananciaGolpe.gain;
+  const t = audio.ctx.currentTime;
+  g.cancelScheduledValues(t);
+  g.setValueAtTime(0.6, t);
+  g.setValueAtTime(0, t + 0.15);
 }
 
 async function activarMicrofono() {
@@ -126,7 +141,8 @@ function apagarMicrofono() {
 }
 
 // Reproduce muestras ya sintetizadas. La promesa termina cuando deja de sonar.
-function transmitir(muestras) {
+// alEmpezar(tiempo) recibe el instante (reloj del audio) en que empieza a sonar.
+function transmitir(muestras, alEmpezar) {
   const ctx = audio.ctx;
   return new Promise((resolver) => {
     const bufer = ctx.createBuffer(1, muestras.length, ctx.sampleRate);
@@ -135,12 +151,14 @@ function transmitir(muestras) {
     fuente.buffer = bufer;
     fuente.connect(audio.salida);
 
-    // Half duplex: por el aire, quien transmite no se escucha a sí mismo
-    // (a menos que se pruebe con un solo dispositivo).
-    const ensordecer = audio.canal === 'aire' && !audio.eco;
+    // Half dúplex: por el aire, quien transmite no se escucha a sí mismo
+    // (a menos que se pruebe con un solo dispositivo). En full dúplex sigue
+    // escuchando, porque el otro dispositivo transmite en otra banda.
+    const ensordecer = audio.canal === 'aire' && !audio.eco && !audio.duplex;
     if (ensordecer) audio.sordo = true;
     audio.transmitiendo = true;
-    audio.inicioTx = ctx.currentTime + 0.05;
+    const inicio = ctx.currentTime + 0.05;
+    if (alEmpezar) alEmpezar(inicio);
     fuente.onended = () => {
       audio.transmitiendo = false;
       if (!ensordecer) { resolver(); return; }
@@ -150,6 +168,6 @@ function transmitir(muestras) {
         resolver();
       }, 150);
     };
-    fuente.start(audio.inicioTx);
+    fuente.start(inicio);
   });
 }

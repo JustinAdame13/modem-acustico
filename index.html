@@ -4,23 +4,39 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Módem acústico web</title>
-  <meta name="description" content="Transmisión de datos por sonido entre dos dispositivos, con paridad, CRC, ARQ y Hamming.">
+  <meta name="description" content="Transmisión de datos por sonido entre dispositivos: serie y paralelo, full dúplex, CRC, ARQ, Hamming y entrelazado.">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2316213a'/%3E%3Cpath d='M4 16h4l3-9 5 18 4-13 2 4h6' fill='none' stroke='%23ffb454' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="css/estilos.css">
 </head>
 <body>
   <header class="encabezado">
-    <div>
-      <h1>Módem acústico</h1>
-      <p class="lema">Texto que viaja como sonido, de una bocina a un micrófono, sin internet ni cables.</p>
-    </div>
+    <h1>Módem acústico</h1>
+    <p class="lema">Texto que viaja como sonido, de una bocina a un micrófono, sin internet ni cables.</p>
+  </header>
 
-    <form class="ajustes" id="ajustes" onsubmit="return false">
+  <main>
+    <form class="enlace" id="enlace" onsubmit="return false" aria-label="Configuración del enlace">
       <fieldset class="ajuste">
         <legend>Canal</legend>
         <div class="selector">
           <label><input type="radio" name="canal" value="aire" checked><span>Aire</span></label>
           <label><input type="radio" name="canal" value="interno"><span>Interno</span></label>
+        </div>
+      </fieldset>
+
+      <fieldset class="ajuste">
+        <legend>Sentido</legend>
+        <div class="selector">
+          <label><input type="radio" name="sentido" value="half" checked><span>Half dúplex</span></label>
+          <label><input type="radio" name="sentido" value="full"><span>Full dúplex</span></label>
+        </div>
+      </fieldset>
+
+      <fieldset class="ajuste solo-full" hidden>
+        <legend>Este dispositivo transmite en</legend>
+        <div class="selector">
+          <label><input type="radio" name="estacion" value="A" checked><span>Banda A</span></label>
+          <label><input type="radio" name="estacion" value="B"><span>Banda B</span></label>
         </div>
       </fieldset>
 
@@ -33,7 +49,7 @@
         </select>
       </label>
 
-      <div class="ajuste solo-aire">
+      <div class="ajuste solo-aire solo-half">
         <label class="casilla"><input type="checkbox" id="eco"><span>Probar con un solo dispositivo</span></label>
         <p class="nota">El emisor se escucha a sí mismo.</p>
       </div>
@@ -43,12 +59,12 @@
           <input type="range" id="atenuacion" min="0" max="50" value="20"></label>
         <label class="deslizador"><span>Ruido <output id="ruido-valor">0 %</output></span>
           <input type="range" id="ruido" min="0" max="100" value="0"></label>
+        <button type="button" class="boton chico" id="golpe">Golpe de ruido</button>
         <label class="casilla"><input type="checkbox" id="monitor" checked><span>Oír la señal</span></label>
       </div>
     </form>
-  </header>
+    <p class="aviso-full solo-full" hidden>Full dúplex: los dos dispositivos transmiten a la vez, cada uno en su banda. Elige Banda A en uno y Banda B en el otro, pulsa «Escuchar» en ambos y envíen al mismo tiempo.</p>
 
-  <main>
     <section class="pantalla" aria-label="Espectro del audio en vivo">
       <div class="pantalla-lienzos">
         <canvas id="espectro" height="130"></canvas>
@@ -75,17 +91,48 @@
           <div id="lista-modos" class="lista-modos"></div>
         </fieldset>
 
-        <div class="fila-enviar">
-          <label class="campo corto">
-            <span class="campo-nombre">Dañar bits a propósito</span>
-            <input type="number" id="inyectar" min="0" max="8" value="0">
-          </label>
-          <button type="button" class="boton principal" id="enviar">Enviar por sonido</button>
+        <div class="opciones">
+          <fieldset class="ajuste solo-arq" hidden>
+            <legend>Variante del ARQ</legend>
+            <div class="selector" id="variantes"></div>
+          </fieldset>
+          <label class="casilla solo-hamming" hidden><input type="checkbox" id="entrelazado"><span>Entrelazar los bits contra ráfagas</span></label>
         </div>
-        <p class="nota">Los bits dañados se voltean solo en el primer envío, para ver cómo reacciona cada modo.</p>
 
-        <h3>Trama enviada</h3>
-        <div class="trama" id="trama-tx"><p class="vacio">Aquí aparece la trama, bit por bit, cuando envíes un mensaje.</p></div>
+        <div class="opciones">
+          <fieldset class="ajuste">
+            <legend>Transmisión</legend>
+            <div class="selector">
+              <label><input type="radio" name="transmision" value="serie" checked><span>Serie</span></label>
+              <label><input type="radio" name="transmision" value="paralelo"><span>Paralelo, 8 canales</span></label>
+            </div>
+          </fieldset>
+          <label class="ajuste">
+            <span class="ajuste-nombre">Bytes por trama</span>
+            <select id="tam-trama">
+              <option value="4">4</option>
+              <option value="8" selected>8</option>
+              <option value="16">16</option>
+            </select>
+          </label>
+        </div>
+
+        <fieldset class="danar">
+          <legend>Dañar a propósito, solo en el primer envío</legend>
+          <div class="danar-fila">
+            <label class="campo-linea"><input type="number" id="inyectar" min="0" max="12" value="0"><span>bits</span></label>
+            <select id="como-danar" aria-label="Cómo dañar">
+              <option value="sueltos">sueltos, al azar</option>
+              <option value="rafaga">en ráfaga, seguidos</option>
+            </select>
+            <select id="donde-danar" aria-label="En qué trama"></select>
+          </div>
+        </fieldset>
+
+        <button type="button" class="boton principal ancho" id="enviar">Enviar por sonido</button>
+
+        <h3 id="titulo-tx">Trama enviada</h3>
+        <div class="trama" id="trama-tx"></div>
       </section>
 
       <section class="panel" id="receptor" aria-labelledby="t-receptor">
@@ -95,8 +142,10 @@
         </div>
         <p class="nota" id="mic-estado">El micrófono está apagado.</p>
 
+        <div class="tira" id="tira" aria-label="Tramas del mensaje"></div>
+
         <div class="recibido" id="recibido">
-          <p class="veredicto" id="veredicto" data-tipo="espera">Esperando un mensaje</p>
+          <p class="veredicto" id="veredicto">Esperando un mensaje</p>
           <p class="texto-recibido" id="texto-recibido"></p>
           <dl class="detalles" id="detalles"></dl>
         </div>
@@ -106,8 +155,8 @@
           <input type="text" id="esperado" maxlength="120" spellcheck="false" placeholder="El mismo texto que se va a enviar">
         </label>
 
-        <h3>Bits recibidos</h3>
-        <div class="trama" id="trama-rx"><p class="vacio">Los bits se dibujan aquí conforme llegan.</p></div>
+        <h3 id="titulo-rx">Bits recibidos</h3>
+        <div class="trama" id="trama-rx"></div>
       </section>
     </div>
 
@@ -136,46 +185,109 @@
       </dl>
     </section>
 
+    <section class="bloque" aria-labelledby="t-matriz">
+      <div class="seccion-cabeza">
+        <h2 id="t-matriz">Dentro de Hamming</h2>
+        <p class="nota" id="matriz-nota">Recibe una trama en modo Hamming para ver sus grupos de 7 bits.</p>
+      </div>
+      <div class="matriz-caja" id="matriz"></div>
+    </section>
+
     <div class="dos-columnas">
+      <section class="panel" aria-labelledby="t-diagrama">
+        <div class="panel-cabeza">
+          <h2 id="t-diagrama">Diagrama del enlace</h2>
+          <button type="button" class="boton chico" id="limpiar-diagrama">Vaciar</button>
+        </div>
+        <p class="nota">Cada flecha es una trama o una respuesta, en el orden en que viajaron.</p>
+        <div class="diagrama" id="diagrama"></div>
+      </section>
+
       <section class="panel" aria-labelledby="t-bitacora">
         <h2 id="t-bitacora">Bitácora del enlace</h2>
         <ol class="bitacora" id="bitacora"><li class="vacio">Cada envío, ACK, NACK y retransmisión queda anotado aquí.</li></ol>
       </section>
+    </div>
 
-      <section class="panel" aria-labelledby="t-registro">
-        <div class="panel-cabeza">
-          <h2 id="t-registro">Registro de pruebas</h2>
-          <div class="grupo-botones">
-            <button type="button" class="boton chico" id="exportar">Descargar CSV</button>
-            <button type="button" class="boton chico" id="limpiar">Vaciar</button>
-          </div>
-        </div>
-        <label class="campo">
-          <span class="campo-nombre">Nota para las siguientes recepciones</span>
+    <section class="bloque" aria-labelledby="t-mediciones">
+      <h2 id="t-mediciones">Mediciones</h2>
+      <p class="nota ancho-lectura">Una serie manda tramas con el texto fijo «Prueba ITL 2026!». El receptor lo conoce, así que cuenta cada bit que llegó mal. Escribe la condición antes de cada serie y aleja los dispositivos o agrega ruido entre series.</p>
+
+      <div class="experimento-controles">
+        <label class="ajuste">
+          <span class="ajuste-nombre">Condición de la prueba</span>
           <input type="text" id="nota" placeholder="Ej. 2 metros, salón en silencio">
         </label>
-        <div class="tabla-caja">
-          <table class="registro">
-            <thead><tr><th>#</th><th>Modo</th><th>Baudios</th><th>Resultado</th><th>Bits erróneos</th><th>Corregidos</th><th>Nivel</th><th>S/N</th><th>Nota</th></tr></thead>
-            <tbody id="registro"><tr class="vacio"><td colspan="9">Cada mensaje recibido agrega un renglón.</td></tr></tbody>
-          </table>
+        <label class="ajuste">
+          <span class="ajuste-nombre">Tramas por serie</span>
+          <select id="serie-cantidad">
+            <option value="6">6</option>
+            <option value="10" selected>10</option>
+            <option value="20">20</option>
+          </select>
+        </label>
+        <label class="ajuste">
+          <span class="ajuste-nombre">Comparar</span>
+          <select id="serie-comparar">
+            <option value="corrige" selected>Paridad + CRC contra Hamming</option>
+            <option value="entrelazado">Hamming sin y con entrelazado</option>
+            <option value="elegido">Solo el modo elegido en el emisor</option>
+          </select>
+        </label>
+        <button type="button" class="boton principal" id="enviar-serie">Enviar serie</button>
+      </div>
+
+      <div class="graficas">
+        <figure class="grafica">
+          <figcaption>Bits erróneos por trama, en porcentaje</figcaption>
+          <div class="grafica-leyenda" id="leyenda-series"></div>
+          <div class="grafica-lienzo"><canvas id="grafica-errores" height="220"></canvas><div class="tooltip" id="tooltip" hidden></div></div>
+        </figure>
+        <figure class="grafica">
+          <figcaption>Señal/ruido por trama, en dB</figcaption>
+          <div class="grafica-lienzo"><canvas id="grafica-snr" height="150"></canvas></div>
+        </figure>
+      </div>
+
+      <h3>Resumen por condición</h3>
+      <div class="tabla-caja">
+        <table class="registro">
+          <thead><tr><th>Condición</th><th>Configuración</th><th>Tramas</th><th>Llegaron bien</th><th>Bits erróneos (promedio)</th><th>Bits corregidos</th><th>Nivel</th><th>S/N</th></tr></thead>
+          <tbody id="resumen"><tr class="vacio"><td colspan="8">Envía una serie para llenar esta tabla.</td></tr></tbody>
+        </table>
+      </div>
+
+      <div class="seccion-cabeza separado">
+        <h3>Registro de todas las recepciones</h3>
+        <div class="grupo-botones">
+          <button type="button" class="boton chico" id="exportar">Descargar CSV</button>
+          <button type="button" class="boton chico" id="limpiar">Vaciar</button>
         </div>
-      </section>
-    </div>
+      </div>
+      <div class="tabla-caja">
+        <table class="registro">
+          <thead><tr><th>#</th><th>Configuración</th><th>Baudios</th><th>Trama</th><th>Resultado</th><th>Bits erróneos</th><th>Corregidos</th><th>Nivel</th><th>S/N</th><th>Condición</th></tr></thead>
+          <tbody id="registro"><tr class="vacio"><td colspan="10">Cada trama recibida agrega un renglón.</td></tr></tbody>
+        </table>
+      </div>
+    </section>
 
     <section class="temas" aria-labelledby="t-temas">
       <h2 id="t-temas">Dónde aparece cada tema de la unidad 2</h2>
       <table>
         <tbody>
           <tr><th>Medio no guiado</th><td>El aire del salón es el canal: la señal viaja como ondas de sonido.</td></tr>
-          <tr><th>Símplex y half dúplex</th><td>Solo enviar es símplex. Con ACK de regreso es half dúplex: los dos transmiten, pero uno a la vez.</td></tr>
-          <tr><th>Transmisión en serie</th><td>Un bit tras otro por un solo canal.</td></tr>
+          <tr><th>Símplex, half y full dúplex</th><td>Sin ARQ es símplex. Con ACK de regreso es half dúplex: los dos transmiten, pero uno a la vez. En full dúplex cada dispositivo usa su propia banda de frecuencias y los dos transmiten al mismo tiempo.</td></tr>
+          <tr><th>Serie y paralelo</th><td>En serie viaja un bit tras otro por un solo canal. En paralelo suenan 8 tonos a la vez, uno por bit: «diferentes frecuencias sobre la misma línea».</td></tr>
           <tr><th>Transmisión asíncrona</th><td>Cada carácter lleva bit de arranque (0) y de parada (1). El receptor se sincroniza de nuevo en cada arranque; no hay reloj compartido.</td></tr>
-          <tr><th>Ruido</th><td>Voces, música y golpes cambian qué tono parece más fuerte y voltean bits.</td></tr>
-          <tr><th>Atenuación</th><td>El nivel recibido (en dB) baja al alejar los dispositivos. Se anota en el registro de pruebas.</td></tr>
-          <tr><th>VRC y CRC</th><td>Bit de paridad par en cada carácter y CRC de 16 bits al final del mensaje.</td></tr>
-          <tr><th>ARQ pare y espere</th><td>El receptor contesta con un tono de ACK o NACK. Con NACK, o si el temporizador se agota, el emisor retransmite.</td></tr>
+          <tr><th>Ruido blanco e impulso</th><td>El ruido de fondo cambia qué tono parece más fuerte. Un golpe o aplauso es ruido de impulso: daña varios bits seguidos (error en ráfaga).</td></tr>
+          <tr><th>Atenuación</th><td>El nivel recibido (en dB) baja al alejar los dispositivos. Se mide en cada trama.</td></tr>
+          <tr><th>VRC y CRC</th><td>Bit de paridad par en cada carácter y CRC de 16 bits al final de cada trama.</td></tr>
+          <tr><th>ARQ pare y espere</th><td>Una trama, una respuesta. Con NACK, o si el temporizador se agota, el emisor retransmite.</td></tr>
+          <tr><th>Retroceda N</th><td>Se envía una ventana de 4 tramas y una sola respuesta. Si la trama x llegó mal, se reenvía desde x; las siguientes se descartan aunque hayan llegado bien.</td></tr>
+          <tr><th>Rechazo selectivo</th><td>La respuesta trae un mapa de la ventana y solo se reenvían las tramas dañadas.</td></tr>
           <tr><th>Código Hamming</th><td>Cada 4 bits viajan con 3 de control (b4 b3 b2 k3 b1 k2 k1). El receptor corrige un bit dañado por grupo sin pedir nada.</td></tr>
+          <tr><th>Entrelazado</th><td>Los grupos de Hamming se transmiten renglón por renglón. Una ráfaga queda repartida, un bit por grupo, y Hamming la corrige.</td></tr>
         </tbody>
       </table>
     </section>
@@ -193,6 +305,12 @@
   <script src="js/demodulador.js"></script>
   <script src="js/audio.js"></script>
   <script src="js/vista.js"></script>
+  <script src="js/matriz.js"></script>
+  <script src="js/diagrama.js"></script>
   <script src="js/app.js"></script>
+  <script src="js/emisor.js"></script>
+  <script src="js/receptor.js"></script>
+  <script src="js/experimento.js"></script>
+  <script src="js/inicio.js"></script>
 </body>
 </html>
